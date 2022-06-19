@@ -29,10 +29,6 @@ if not table.move then
 	end
 end
 
-local lua_bc_to_state
-local lua_wrap_state
-local stm_lua_func
-
 -- SETLIST config
 local FIELDS_PER_FLUSH = 50
 
@@ -432,28 +428,29 @@ local function stm_upval_list(S)
 	return list
 end
 
-function stm_lua_func(S, psrc)
+local function stm_lua_func(S, psrc)
 	local proto = {}
 	local src = stm_lstring(S) or psrc -- source is propagated
 
 	proto.source = src -- source name
 
-	S:s_int() -- line defined
-	S:s_int() -- last line defined
+	proto.line_defined = S:s_int() -- line defined
+	proto.last_line_defined = S:s_int() -- last line defined
 
 	proto.num_upval = stm_byte(S) -- num upvalues
 	proto.num_param = stm_byte(S) -- num params
 
-	stm_byte(S) -- vararg flag
+	proto.vararg = stm_byte(S) -- vararg flag
 	proto.max_stack = stm_byte(S) -- max stack size
 
 	proto.code = stm_inst_list(S)
 	proto.const = stm_const_list(S)
 	proto.subs = stm_sub_list(S, src)
-	proto.lines = stm_line_list(S)
 
-	stm_loc_list(S)
-	stm_upval_list(S)
+    -- debug info
+	proto.lines = stm_line_list(S)
+	proto.locals = stm_loc_list(S)
+	proto.upvalues = stm_upval_list(S)
 
 	-- post process optimization
 	for _, v in ipairs(proto.code) do
@@ -469,7 +466,7 @@ function stm_lua_func(S, psrc)
 	return proto
 end
 
-function lua_bc_to_state(src)
+local function lua_bc_to_state(src)
 	-- func reader
 	local rdr_func
 
@@ -544,7 +541,8 @@ local function on_lua_error(failed, err)
 	error(string.format('%s:%i: %s', src, line, err), 0)
 end
 
-local function run_lua_func(state, env, upvals)
+local run_lua_func
+local function get_iterator(state, env, upvals)
 	local code = state.code
 	local subs = state.subs
 	local vararg = state.vararg
@@ -554,7 +552,7 @@ local function run_lua_func(state, env, upvals)
 	local memory = state.memory
 	local pc = state.pc
 
-	while true do
+	return function()
 		local inst = code[pc]
 		local op = inst.op
 		pc = pc + 1
@@ -1029,24 +1027,34 @@ local function run_lua_func(state, env, upvals)
 	end
 end
 
-function lua_wrap_state(proto, env, upval)
+function run_lua_func(state,env,upval)
+	local iter = get_iterator(state,env,upval)
+	while true do
+		local r = {iter()}
+		if #r~=0 then return unpack(r) end
+	end
+end
+local function make_state(proto, ...)
+	local passed = table.pack(...)
+	local memory = table.create(proto.max_stack)
+	local vararg = {len = 0, list = {}}
+
+	table.move(passed, 1, proto.num_param, 0, memory)
+
+	if proto.num_param < passed.n then
+		local start = proto.num_param + 1
+		local len = passed.n - proto.num_param
+
+		vararg.len = len
+		table.move(passed, start, start + len - 1, 1, vararg.list)
+	end
+
+	return {vararg = vararg, memory = memory, code = proto.code, subs = proto.subs, pc = 1}
+end
+
+local function lua_wrap_state(proto, env, upval)
 	local function wrapped(...)
-		local passed = table.pack(...)
-		local memory = table.create(proto.max_stack)
-		local vararg = {len = 0, list = {}}
-
-		table.move(passed, 1, proto.num_param, 0, memory)
-
-		if proto.num_param < passed.n then
-			local start = proto.num_param + 1
-			local len = passed.n - proto.num_param
-
-			vararg.len = len
-			table.move(passed, start, start + len - 1, 1, vararg.list)
-		end
-
-		local state = {vararg = vararg, memory = memory, code = proto.code, subs = proto.subs, pc = 1}
-
+		local state = make_state(proto, ...)
 		local result = table.pack(pcall(run_lua_func, state, env, upval))
 
 		if result[1] then
@@ -1063,4 +1071,22 @@ function lua_wrap_state(proto, env, upval)
 	return wrapped
 end
 
-return {bc_to_state = lua_bc_to_state, wrap_state = lua_wrap_state}
+return {
+	bc_to_state = lua_bc_to_state,
+	wrap_state = lua_wrap_state,
+	run_lua_func = run_lua_func,
+	get_state_iterator = get_iterator,
+	create_state = make_state,
+	stm = {
+		string=stm_string,
+		lstring=stm_lstring,
+		byte=stm_byte,
+		lua_function=stm_lua_func,
+		upvalue_list=stm_upval_list,
+		local_list=stm_loc_list,
+		line_list=stm_line_list,
+		sub_list=stm_sub_list,
+		constant_list=stm_const_list,
+		instruction_list=stm_inst_list
+	}
+}
