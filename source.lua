@@ -78,6 +78,46 @@ local OPCODE_RM = {
 	[36] = 31, -- CLOSURE
 	[37] = 35, -- VARARG
 }
+local OPCODE_N = {
+	[22] = "JMP",
+	[31] = "FORLOOP",
+	[33] = "TFORLOOP",
+	[0] = "MOVE",
+	[1] = "LOADK",
+	[2] = "LOADBOOL",
+	[26] = "TEST",
+	[12] = "ADD",
+	[13] = "SUB",
+	[14] = "MUL",
+	[15] = "DIV",
+	[16] = "MOD",
+	[17] = "POW",
+	[18] = "UNM",
+	[19] = "NOT",
+	[3] = "LOADNIL",
+	[4] = "GETUPVAL",
+	[5] = "GETGLOBAL",
+	[6] = "GETTABLE",
+	[7] = "SETGLOBAL",
+	[8] = "SETUPVAL",
+	[9] = "SETTABLE",
+	[10] = "NEWTABLE",
+	[20] = "LEN",
+	[21] = "CONCAT",
+	[23] = "EQ",
+	[24] = "LT",
+	[25] = "LE",
+	[27] = "TESTSET",
+	[32] = "FORPREP",
+	[34] = "SETLIST",
+	[11] = "SELF",
+	[28] = "CALL",
+	[29] = "TAILCALL",
+	[30] = "RETURN",
+	[35] = "CLOSE",
+	[36] = "CLOSURE",
+	[37] = "VARARG",
+}
 
 -- opcode types for getting values
 local OPCODE_T = {
@@ -389,7 +429,7 @@ local function stm_const_list(S)
 
 	return list
 end
-
+local stm_lua_func
 local function stm_sub_list(S, src)
 	local len = S:s_int()
 	local list = table.create(len)
@@ -428,7 +468,7 @@ local function stm_upval_list(S)
 	return list
 end
 
-local function stm_lua_func(S, psrc)
+function stm_lua_func(S, psrc)
 	local proto = {}
 	local src = stm_lstring(S) or psrc -- source is propagated
 
@@ -447,7 +487,7 @@ local function stm_lua_func(S, psrc)
 	proto.const = stm_const_list(S)
 	proto.subs = stm_sub_list(S, src)
 
-    -- debug info
+	-- debug info
 	proto.lines = stm_line_list(S)
 	proto.locals = stm_loc_list(S)
 	proto.upvalues = stm_upval_list(S)
@@ -541,7 +581,7 @@ local function on_lua_error(failed, err)
 	error(string.format('%s:%i: %s', src, line, err), 0)
 end
 
-local run_lua_func
+local lua_wrap_state
 local function get_iterator(state, env, upvals)
 	local code = state.code
 	local subs = state.subs
@@ -1052,7 +1092,7 @@ local function make_state(proto, ...)
 	return {vararg = vararg, memory = memory, code = proto.code, subs = proto.subs, pc = 1}
 end
 
-local function lua_wrap_state(proto, env, upval)
+function lua_wrap_state(proto, env, upval)
 	local function wrapped(...)
 		local state = make_state(proto, ...)
 		local result = table.pack(pcall(run_lua_func, state, env, upval))
@@ -1077,6 +1117,8 @@ return {
 	run_lua_func = run_lua_func,
 	get_state_iterator = get_iterator,
 	create_state = make_state,
+	op_remap = OPCODE_RM,
+	op_names = OPCODE_N,
 	stm = {
 		string=stm_string,
 		lstring=stm_lstring,
