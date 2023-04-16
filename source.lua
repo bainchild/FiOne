@@ -395,6 +395,15 @@ local function stm_inst_list(S)
 			data.C = bit.band(bit.rshift(ins, 14), 0x1FF)
 			data.is_KB = mode.b == 'OpArgK' and data.B > 0xFF -- post process optimization
 			data.is_KC = mode.c == 'OpArgK' and data.C > 0xFF
+
+			if op == 10 then -- decode NEWTABLE array size, store it as constant value
+				local e = bit.band(bit.rshift(data.B, 3), 31)
+				if e == 0 then
+					data.const = data.B
+				else
+					data.const = bit.lshift(bit.band(data.B, 7) + 8, e - 1)
+				end
+			end
 		elseif args == 'ABx' then
 			data.Bx = bit.band(bit.rshift(ins, 14), 0x3FFFF)
 			data.is_K = mode.b == 'OpArgK'
@@ -768,7 +777,7 @@ local function get_iterator(state, env, upvals)
 						end
 					elseif op > 16 then
 						--[[NEWTABLE]]
-						memory[inst.A] = {}
+						memory[inst.A] = table.create(inst.const) -- inst.const contains array size
 					else
 						--[[DIV]]
 						local lhs, rhs
@@ -806,8 +815,8 @@ local function get_iterator(state, env, upvals)
 				end
 
 				if loops then
-					memory[inst.A] = index
-					memory[inst.A + 3] = index
+					memory[A] = index
+					memory[A + 3] = index
 					pc = pc + inst.sBx
 				end
 			end
@@ -835,9 +844,10 @@ local function get_iterator(state, env, upvals)
 							return table.unpack(memory, A, A + len - 1)
 						else
 							--[[CONCAT]]
-							local str = memory[inst.B]
+							local B = inst.B
+							local str = memory[B]
 
-							for i = inst.B + 1, inst.C do str = str .. memory[i] end
+							for i = B + 1, inst.C do str = str .. memory[i] end
 
 							memory[inst.A] = str
 						end
