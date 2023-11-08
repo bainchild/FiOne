@@ -15,6 +15,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ]] --
+-- Metamethod safety. Will error instead of calling the metamethod.
+-- No idea on performance.
 ---@diagnostic disable-next-line: undefined-global
 local bit = bit or bit32 or require('bit')
 
@@ -170,73 +172,37 @@ local OPCODE_M = {
 	{b = 'OpArgU', c = 'OpArgN'},
 	{b = 'OpArgU', c = 'OpArgN'},
 }
--- safety
--- WARNING: EXTREMELY REPETITIVE CODE
--- there is no particular reason why
 local rawget = rawget
 local rawset = rawset
 local rawequal = rawequal
-local function rawlower(a,b)
-   if type(a)==type(b) then
+local function make_comparison(op)
+	return function(a,b)
+    if type(a)==type(b) then
       local t = type(a)
       if t=="number" or t=="string" then
-         return a<b
+        return op(a,b)
       end
-   end
-   error("attempt to compare "..type(a).." with "..type(b),3)
+    end
+    error("attempt to compare "..type(a).." with "..type(b),4)
+	end
 end
-local function rawlowereq(a,b)
-   if type(a)==type(b) then
-      local t = type(a)
-      if t=="number" or t=="string" then
-         return a<=b
-      end
-   end
-   error("attempt to compare "..type(a).." with "..type(b),3)
+local function make_arith(op)
+	return function(a,b)
+    if (type(a)=="string" or type(a)=="number") and (type(b)=="string" or type(b)=="number") then
+      return op(a,b)
+    end
+    error("attempt to perform arithmetic on a "..type(a).." value",4)
+	end
 end
-local function rawadd(a,b)
-   if (type(a)=="string" or type(a)=="number") and (type(b)=="string" or type(b)=="number") then
-      return a+b
-   end
-   error("attempt to perform arithmetic on a "..type(a).." value",3)
-end
-local function rawsub(a,b)
-   if (type(a)=="string" or type(a)=="number") and (type(b)=="string" or type(b)=="number") then
-      return a-b
-   end
-   error("attempt to perform arithmetic on a "..type(a).." value",3)
-end
-local function rawmul(a,b)
-   if (type(a)=="string" or type(a)=="number") and (type(b)=="string" or type(b)=="number") then
-      return a*b
-   end
-   error("attempt to perform arithmetic on a "..type(a).." value",3)
-end
-local function rawdiv(a,b)
-   if (type(a)=="string" or type(a)=="number") and (type(b)=="string" or type(b)=="number") then
-      return a/b
-   end
-   error("attempt to perform arithmetic on a "..type(a).." value",3)
-end
-local function rawpow(a,b)
-   if (type(a)=="string" or type(a)=="number") and (type(b)=="string" or type(b)=="number") then
-      return a^b
-   end
-   error("attempt to perform arithmetic on a "..type(a).." value",3)
-end
-local function rawmod(a,b)
-   if (type(a)=="string" or type(a)=="number") and (type(b)=="string" or type(b)=="number") then
-      return a%b
-   end
-   error("attempt to perform arithmetic on a "..type(a).." value",3)
-end
-local function rawconcat(a,b)
-   if (type(a)=="string" or type(a)=="number") and (type(b)=="string" or type(b)=="number") then
-      return a..b
-   end
-   error("attempt to concatenate a "..type(a).." value",3)
-end
-
+local rawlower = make_comparison(function(a,b)return a<b end)
+local rawlowereq = make_comparison(function(a,b)return a<=b end)
+local rawadd = make_arith(function(a,b)return a+b end)
+local rawsub = make_arith(function(a,b)return a-b end)
+local rawmul = make_arith(function(a,b)return a*b end)
+local rawdiv = make_arith(function(a,b)return a/b end)
+local rawpow = make_arith(function(a,b)return a^b end)
+local rawmod = make_arith(function(a,b)return a%b end)
+local rawconcat = make_arith(function(a,b)return a..b end)
 local function rawlen(a)
    if type(a)=="string" then
       return #a

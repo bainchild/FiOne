@@ -15,6 +15,12 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ]] --
+-- what if you wanted to do as John Lua never intended?
+-- what if you wanted to (probably) severly impact vm speed?
+-- then this is the mod for you!
+-- you want to disable metamethods? sure!
+-- you want to insert opcodes in source code? we've got that!
+-- what if you wanted to hook into libraries? all that and more!
 local bit = bit or bit32 or require('bit')
 
 if not table.create then function table.create(_) return {} end end
